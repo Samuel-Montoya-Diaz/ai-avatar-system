@@ -21,3 +21,9 @@ Postgres, Redis, Celery.
 - Cambios pequeños, un commit por tarea, mensajes tipo "feat(backend): ...".
 - Ejecuta los tests (pytest en backend/) tras cambios en backend.
 - Comenta en español; código e identificadores en inglés.
+
+# LLM
+Se usa Ollama en local (qwen2.5:7b, Q4_K_M) como LLM de los NPC, no una API
+de pago. Desde contenedores se accede por http://host.docker.internal:11434.
+Comprobar si el repo lo soporta; si no, añadir un proveedor compatible con la
+API de Ollama. Los NPC hablan en español y su conocimiento se limita al siglo XVI.
