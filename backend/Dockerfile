@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
@@ -50,18 +50,13 @@ RUN set -eux; \
     ln -sf python3 /usr/bin/python; \
     ln -sf pip3 /usr/bin/pip
 
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install PyTorch with CUDA 11.8 (matches base image)
+# PyTorch first, from the CUDA 12.8 index: Blackwell GPUs (sm_120) need torch >= 2.7.
 RUN pip install --no-cache-dir \
-    torch==2.2.0+cu118 \
-    torchvision==0.17.0+cu118 \
-    torchaudio==2.2.0+cu118 \
-    --index-url https://download.pytorch.org/whl/cu118
+    torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 \
+    --index-url https://download.pytorch.org/whl/cu128
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
