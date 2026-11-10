@@ -1,0 +1,19 @@
+# Dependencies of the MuseTalk worker (see MUSETALK_PYTHON in app/config.py).
+#
+# Installed into a venv created with --system-site-packages, so torch and the
+# rest of the backend stack come from the image and only the pins below
+# override them. MuseTalk needs different versions of these three than the
+# backend does, which is why it cannot share one environment.
+transformers==4.39.2
+accelerate==0.28.0
+librosa==0.11.0
+
+# Needed by MuseTalk and not part of the backend's requirements.txt.
+einops==0.8.1
+omegaconf==2.3.0
+
+# Guards, already satisfied by the system install. Listed so that pip never
+# replaces the CUDA 12.8 build of torch or moves numpy while resolving the
+# packages above.
+torch==2.7.0
+numpy==1.26.3
