@@ -32,6 +32,7 @@ RUN set -eux; \
                 python3.10 \
                 python3.10-dev \
                 python3-pip \
+                python3.10-venv \
                 ffmpeg \
                 libsm6 \
                 libxext6 \
@@ -57,6 +58,21 @@ RUN pip install --no-cache-dir \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# MuseTalk, pinned to an exact upstream commit for reproducibility. It lives in
+# /opt, not /app: docker-compose bind-mounts ./backend over /app, which would
+# hide anything the image put there. Point MUSETALK_PATH at this directory.
+ARG MUSETALK_COMMIT=0a89dec45a0192b824e3cf4daf96c239440c5ed8
+RUN git clone https://github.com/TMElyralab/MuseTalk.git /opt/MuseTalk \
+    && git -C /opt/MuseTalk checkout "${MUSETALK_COMMIT}"
+
+# Dedicated venv for the MuseTalk worker (MUSETALK_PYTHON). It inherits torch
+# and the rest of the backend stack from the system and overrides only the
+# packages pinned in requirements-musetalk.txt.
+COPY requirements-musetalk.txt .
+RUN python -m venv --system-site-packages /opt/musetalk-venv \
+    && /opt/musetalk-venv/bin/pip install --no-cache-dir -r requirements-musetalk.txt \
+    && /opt/musetalk-venv/bin/pip check
 
 # Copy application code
 COPY . .
