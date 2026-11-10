@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     AVATAR_RESOLUTION: int = 512
     AVATAR_FPS: int = 25
     MUSETALK_PATH: str = "models/MuseTalk"
+    # Python interpreter that runs the MuseTalk worker. Empty means the same
+    # interpreter as the backend (sys.executable). Point it at a dedicated venv
+    # to keep MuseTalk's pinned dependencies apart from the backend's.
+    MUSETALK_PYTHON: str = ""
 
     # STT Configuration
     # large-v3-turbo: best 2026 sweet spot — ~216x real-time on GPU, multilingual,

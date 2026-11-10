@@ -168,7 +168,7 @@ class AvatarAnimator:
         self._worker_stderr_path = musetalk_dir / "worker_stderr.log"
         stderr_file = open(self._worker_stderr_path, "ab")
         proc = await asyncio.create_subprocess_exec(
-            sys.executable,
+            settings.MUSETALK_PYTHON or sys.executable,
             str(worker_script),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
