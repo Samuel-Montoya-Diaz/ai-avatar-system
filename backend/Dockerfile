@@ -80,6 +80,15 @@ RUN python -m venv --system-site-packages /opt/musetalk-venv \
 # deviation from upstream is explicit and reviewable.
 COPY patches/musetalk_preprocessing.py /opt/MuseTalk/musetalk/utils/preprocessing.py
 
+# torch >= 2.6 defaults torch.load to weights_only=True, which rejects the legacy
+# .tar format of the torchvision resnet18 checkpoint that MuseTalk's face parser
+# loads. The file comes from download.pytorch.org and its SHA-256 is pinned in
+# scripts/musetalk_weights.sha256. grep makes the build fail if upstream changes
+# this line and the patch stops applying.
+RUN sed -i 's/torch.load(model_path)/torch.load(model_path, weights_only=False)/' \
+        /opt/MuseTalk/musetalk/utils/face_parsing/resnet.py \
+    && grep -q 'weights_only=False' /opt/MuseTalk/musetalk/utils/face_parsing/resnet.py
+
 # Copy application code
 COPY . .
 
