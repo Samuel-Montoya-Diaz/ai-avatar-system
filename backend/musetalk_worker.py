@@ -45,7 +45,7 @@ _PROTO = sys.stdout
 
 FPS = 25
 EXTRA_MARGIN = 10
-BATCH_SIZE = 8
+BATCH_SIZE = int(os.environ.get("MUSETALK_BATCH_SIZE", "8"))
 AUDIO_PAD_L = 2
 AUDIO_PAD_R = 2
 
@@ -54,6 +54,19 @@ def _tick(label, t0):
     sys.stderr.write(f"TIMING {label}: {time.time() - t0:.1f}s\n")
     sys.stderr.flush()
     return time.time()
+
+
+def _vram(label):
+    if not torch.cuda.is_available():
+        return
+    gb = 1024**3
+    sys.stderr.write(
+        f"VRAM {label}: allocated={torch.cuda.memory_allocated() / gb:.2f} GB, "
+        f"peak_allocated={torch.cuda.max_memory_allocated() / gb:.2f} GB, "
+        f"reserved={torch.cuda.memory_reserved() / gb:.2f} GB, "
+        f"peak_reserved={torch.cuda.max_memory_reserved() / gb:.2f} GB\n"
+    )
+    sys.stderr.flush()
 
 
 def _reply(obj: dict):
@@ -131,12 +144,14 @@ def _restore(restorer, frame):
         return frame
 
 
+@torch.inference_mode()
 def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device, restorer=None):
     image_path = job["image"]
     audio_path = job["audio"]
     output_path = job["output"]
     coord_cache = job.get("coord_cache")
 
+    torch.cuda.reset_peak_memory_stats()
     t = time.time()
     input_img_list = [image_path]
 
@@ -174,6 +189,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
     )
 
     t = _tick("whisper features", t)
+    _vram("peak after whisper features")
     # ── VAE-encode frames ────────────────────────────────────────────────────
     input_latent_list = []
     for bbox, frame in zip(coord_list, frame_list):
@@ -192,6 +208,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
     latent_list_cycle: List[Any] = input_latent_list + list(reversed(input_latent_list))
 
     t = _tick("vae encode", t)
+    _vram("peak after vae encode")
     # ── UNet inference ───────────────────────────────────────────────────────
     gen = datagen(
         whisper_chunks=whisper_chunks,
@@ -209,6 +226,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
             res_frame_list.append(f)
 
     t = _tick(f"unet+vae decode ({len(res_frame_list)} frames)", t)
+    _vram("peak after unet+vae decode")
     # ── blend back ───────────────────────────────────────────────────────────
     frames_dir = output_path + "_frames"
     os.makedirs(frames_dir, exist_ok=True)
@@ -226,6 +244,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
         cv2.imwrite(f"{frames_dir}/{str(i).zfill(8)}.png", combined)
 
     t = _tick("blend+save frames", t)
+    _vram("peak after blend+save frames")
     # ── assemble video ───────────────────────────────────────────────────────
     tmp_vid = output_path + ".tmp.mp4"
     os.system(
@@ -235,6 +254,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
     )
     os.system(f"ffmpeg -y -v warning -i {audio_path} -i {tmp_vid} {output_path}")
     t = _tick("ffmpeg", t)
+    _vram("job")
     shutil.rmtree(frames_dir)
     os.remove(tmp_vid)
 
@@ -286,6 +306,8 @@ def main():
         init.get("face_restore", "off"), init.get("face_restore_model", ""), device
     )
 
+    torch.cuda.empty_cache()
+    _vram("after load")
     _PROTO.write("READY\n")
     _PROTO.flush()
 
