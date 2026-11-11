@@ -17,3 +17,6 @@ omegaconf==2.3.0
 # packages above.
 torch==2.7.0
 numpy==1.26.3
+
+# Downloads the BiSeNet face parser from Google Drive (scripts/download_musetalk_weights.py).
+gdown==5.2.0
