@@ -68,12 +68,19 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      # MuseTalk lives in the image (/opt), outside the ./backend:/app bind mount.
+      - MUSETALK_PATH=/opt/MuseTalk
+      - MUSETALK_PYTHON=/opt/musetalk-venv/bin/python
+      # face_alignment downloads its weights under TORCH_HOME; keep them in a volume.
+      - TORCH_HOME=/opt/torch-cache
     volumes:
       - ./backend:/app
       - avatar_cache:/tmp/avatars
       - video_cache:/tmp/videos
       - audio_cache:/tmp/audio
       - voice_profiles:/app/voice_profiles
+      - musetalk_models:/opt/MuseTalk/models
+      - torch_cache:/opt/torch-cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -237,6 +244,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  musetalk_models:
+  torch_cache:
   postgres_data:
     driver: local
   redis_data:
