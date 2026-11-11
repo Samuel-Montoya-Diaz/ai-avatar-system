@@ -74,6 +74,12 @@ RUN python -m venv --system-site-packages /opt/musetalk-venv \
     && /opt/musetalk-venv/bin/pip install --no-cache-dir -r requirements-musetalk.txt \
     && /opt/musetalk-venv/bin/pip check
 
+# Replace MuseTalk's preprocessing (DWPose via mmpose/mmcv, which would need to
+# be compiled) with a face_alignment based version. Same public functions, so
+# the worker and the rest of MuseTalk are unaffected. Tracked in the repo so the
+# deviation from upstream is explicit and reviewable.
+COPY patches/musetalk_preprocessing.py /opt/MuseTalk/musetalk/utils/preprocessing.py
+
 # Copy application code
 COPY . .
 
