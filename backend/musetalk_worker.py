@@ -25,6 +25,7 @@ import os
 import pickle
 import shutil
 import sys
+import time
 import traceback
 from typing import Any, List
 
@@ -38,6 +39,10 @@ from musetalk.utils.preprocessing import coord_placeholder, get_landmark_and_bbo
 from musetalk.utils.utils import datagen, load_all_model
 from transformers import WhisperModel
 
+# Channel for the stdin/stdout protocol. main() moves it to a private fd so that
+# stray prints from libraries cannot be mistaken for protocol lines.
+_PROTO = sys.stdout
+
 FPS = 25
 EXTRA_MARGIN = 10
 BATCH_SIZE = 8
@@ -45,9 +50,15 @@ AUDIO_PAD_L = 2
 AUDIO_PAD_R = 2
 
 
+def _tick(label, t0):
+    sys.stderr.write(f"TIMING {label}: {time.time() - t0:.1f}s\n")
+    sys.stderr.flush()
+    return time.time()
+
+
 def _reply(obj: dict):
-    sys.stdout.write(json.dumps(obj) + "\n")
-    sys.stdout.flush()
+    _PROTO.write(json.dumps(obj) + "\n")
+    _PROTO.flush()
 
 
 def _load_face_restorer(mode: str, model_path: str, device):
@@ -126,6 +137,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
     output_path = job["output"]
     coord_cache = job.get("coord_cache")
 
+    t = time.time()
     input_img_list = [image_path]
 
     # ── face coordinates (cached per avatar image) ───────────────────────────
@@ -146,6 +158,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
     if not frame_list or all(c == coord_placeholder for c in coord_list):
         raise RuntimeError("No face detected in avatar image")
 
+    t = _tick("face coords", t)
     # ── audio features ───────────────────────────────────────────────────────
     weight_dtype = unet.model.dtype
     whisper_input_features, librosa_length = audio_processor.get_audio_feature(audio_path)
@@ -160,6 +173,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
         audio_padding_length_right=AUDIO_PAD_R,
     )
 
+    t = _tick("whisper features", t)
     # ── VAE-encode frames ────────────────────────────────────────────────────
     input_latent_list = []
     for bbox, frame in zip(coord_list, frame_list):
@@ -177,6 +191,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
     coord_list_cycle: List[Any] = coord_list + list(reversed(coord_list))  # type: ignore[operator]
     latent_list_cycle: List[Any] = input_latent_list + list(reversed(input_latent_list))
 
+    t = _tick("vae encode", t)
     # ── UNet inference ───────────────────────────────────────────────────────
     gen = datagen(
         whisper_chunks=whisper_chunks,
@@ -193,6 +208,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
         for f in vae.decode_latents(pred):
             res_frame_list.append(f)
 
+    t = _tick(f"unet+vae decode ({len(res_frame_list)} frames)", t)
     # ── blend back ───────────────────────────────────────────────────────────
     frames_dir = output_path + "_frames"
     os.makedirs(frames_dir, exist_ok=True)
@@ -209,6 +225,7 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
         combined = _restore(restorer, combined)
         cv2.imwrite(f"{frames_dir}/{str(i).zfill(8)}.png", combined)
 
+    t = _tick("blend+save frames", t)
     # ── assemble video ───────────────────────────────────────────────────────
     tmp_vid = output_path + ".tmp.mp4"
     os.system(
@@ -217,11 +234,17 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
         f"-vcodec libx264 -vf format=yuv420p -crf 18 {tmp_vid}"
     )
     os.system(f"ffmpeg -y -v warning -i {audio_path} -i {tmp_vid} {output_path}")
+    t = _tick("ffmpeg", t)
     shutil.rmtree(frames_dir)
     os.remove(tmp_vid)
 
 
 def main():
+    global _PROTO
+    _PROTO = os.fdopen(os.dup(1), "w")
+    os.dup2(2, 1)  # print() and child processes (ffmpeg) now go to stderr
+    sys.stdout = sys.stderr
+
     # ── read init config ──────────────────────────────────────────────────────
     init = json.loads(sys.stdin.readline())
 
@@ -263,8 +286,8 @@ def main():
         init.get("face_restore", "off"), init.get("face_restore_model", ""), device
     )
 
-    sys.stdout.write("READY\n")
-    sys.stdout.flush()
+    _PROTO.write("READY\n")
+    _PROTO.flush()
 
     # ── job loop ──────────────────────────────────────────────────────────────
     for raw in sys.stdin:
